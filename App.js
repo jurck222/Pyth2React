@@ -400,7 +400,7 @@ function txPktBLE(pkt, pktlen, hnd){
     connectedDevice.requestMTU(247);
     setCaptureActionAUDIO(1, samples2capture);
     sleepMs(2000 + samples2capture/16);
-    console.log("bedarija");
+    
     readDataAUDIO();
   }
   
