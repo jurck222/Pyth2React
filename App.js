@@ -13,12 +13,12 @@ import {
 } from 'react-native';
 
 
-import CheckBox from '@react-native-community/checkbox';
 
-import {BleManager, Device} from 'react-native-ble-plx';
+
+import {BleManager, Characteristic, Device, LogLevel} from 'react-native-ble-plx';
 import {styles} from './Styles/styles';
 import {LogBox} from 'react-native';
-import { manager } from './BlueToothScanner';
+
 import {decode, encode} from 'base-64'
 
 if (!global.btoa) {  global.btoa = encode }
@@ -30,6 +30,7 @@ LogBox.ignoreAllLogs(); //Ignore all log notifications
 
 
 const BLTManager = new BleManager();
+BLTManager.setLogLevel("Verbose");
 const g_ble_pkt_size = 244;
 // g_ble_pkt_size = 132
 let g_ble_rx_rflag = 0;
@@ -44,24 +45,7 @@ const SERVICE_UUID = '197a1398-719d-48cf-87c2-4d0535cb48b1';
 const CHARACTERISTIC_UUID = '10e0c266-b3f3-4fb5-a0df-3b1570be06e8';
 
 
-//const BOX_UUID = 'f27b53ad-c63d-49a0-8c0f-9f297e6cc520';
-/*
-function StringToBool(input) {
-  if (input == '1') {
-    return true;
-  } else {
-    return false;
-  }
-}
 
-function BoolToString(input) {
-  if (input == true) {
-    return '1';
-  } else {
-    return '0';
-  }
-}
-*/
 
 export default function App() {
   //Is a device connected?
@@ -75,9 +59,9 @@ export default function App() {
   const [message, setMessage] = useState('Nothing Yet');
   const [boxvalue, setBoxValue] = useState(false);
 
-  async function setCaptureActionAUDIO(action: number, size: number){
-    let n : number= 0;
-    let pktsize : number = 9;
+   function setCaptureActionAUDIO(action, size){
+    let n = 0;
+    let pktsize  = 9;
     let pktdata = new ArrayBuffer(pktsize);
     for(let i = 0; i<9;i++){
       pktdata[i]= 0x00;
@@ -100,17 +84,10 @@ export default function App() {
 	  tmp = tmp - pktdata[n+2]*(2**8)
 	  pktdata[n+3] = parseInt(tmp);
     txPktBLE(pktdata, pktsize, 0x0012);
+    console.log("-> BLE: setting action mode"+action+"S \n"+size);
     
   }
-  function _arrayBufferToBase64( buffer ) {
-    var binary = '';
-    var bytes = new Uint8Array( buffer );
-    var len = bytes.byteLength;
-    for (var i = 0; i < len; i++) {
-        binary += String.fromCharCode( bytes[ i ] );
-    }
-    return window.btoa( binary );
-}
+  
   function getCaptureStatusAUDIO(){
     let n = 0;
     let pktsize = 4;
@@ -135,7 +112,7 @@ export default function App() {
     }
     //print("-> BLE: Audio capture status: %d\n" %g_ble_rx_pkt[3]);
   }
-  function wait4RespBLE(period: number){
+  function wait4RespBLE(period){
     
     //g_ble_rx_rflag = 0;
     period = period*10;
@@ -145,22 +122,12 @@ export default function App() {
         return 1;
       }
       console.log("here");
-      sleepUs(100000);
+      sleepUs(100);
     }
     return 0;
 }
-/*
-function notifyBLE(handle, data){
-    let size = data[2] + 4;
-    //# print("-> SYS: notification Rx-ed %d \n" %size)
-    for(let i = 0; i<size; i++){
-      g_ble_rx_pkt[i] = data[i]
-    }
-    //# print("-> SYS: notification data\n %s\n" % (binascii.hexlify(data[0:size])))
-    //# print("-> SYS: notification data\n %s\n" % (binascii.hexlify(data[0:16])))
-    g_ble_rx_rflag = 1;
-}*/
-function txPktBLE(pkt: ArrayBuffer | Iterable<number>, pktlen: number, hnd: number){
+
+function txPktBLE(pkt, pktlen, hnd){
   
   pkt[pktlen-1]=0x00;
   let crc0 = 0;
@@ -189,30 +156,25 @@ function txPktBLE(pkt: ArrayBuffer | Iterable<number>, pktlen: number, hnd: numb
     new Uint8Array(pkt)
       .reduce((data, byte) => data + String.fromCharCode(byte), '')
   );
-  console.log(connectedDevice.writeCharacteristicWithResponseForService(SERVICE_UUID,CHARACTERISTIC_UUID,base64));
+  connectedDevice.writeCharacteristicWithoutResponseForService(SERVICE_UUID,CHARACTERISTIC_UUID,base64);
+  
   //device.char_write_handle(hnd, pkt, False);
 }
-/*
-def delay_us(n):
-    time.sleep(n / 1000000.)
 
-
-def delay_ms(n):
-    time.sleep(n / 1000.)
-    */
-  function sleepMs(ms: number | undefined) {
+  function sleepMs(s) {
       return new Promise(
-        resolve => setTimeout(resolve, ms)
+        resolve => setTimeout(resolve, s/1000)
       );
   }
-  function sleepUs(ms: number) {
+  function sleepUs(s) {
     return new Promise(
-      resolve => setTimeout(resolve, ms/1000)
+      resolve => setTimeout(resolve, s/1000000)
     );
 }
-  async function readDataAUDIO(){
+   function readDataAUDIO(){
     let n = 0;
     let pktsize = 9;
+    
     let pktdata = new ArrayBuffer(g_ble_pkt_size);
     let bdata = new ArrayBuffer(2*512*1024);
     let fdata = [];
@@ -251,7 +213,7 @@ def delay_ms(n):
     
     console.log("-> BLE: preparing for download of "+cap_size+" B");
     
-    //tx_btime  = datetime.datetime.now();
+    
     let ridx = 0;
     while(true){
       
@@ -300,12 +262,12 @@ def delay_ms(n):
       if(addr == ridx){
         for (let i = 0; i<rxed_bytes; i=i+2){
           
-          tmp = int(g_ble_rx_pkt[7+i+1])*256 + int(g_ble_rx_pkt[7+i]);
+          tmp = parseInt(g_ble_rx_pkt[7+i+1])*256 + parseInt(g_ble_rx_pkt[7+i]);
           
           fdata[ridx+n] = tmp;
           pdata[ridx+n] = tmp;
           // print("-> BLE: %d " %g_ble_rx_pkt[7+k], " %d" %g_ble_rx_pkt[7+k+1]);
-          n += 1;
+          n =n+ 1;
         }
           
         
@@ -315,8 +277,10 @@ def delay_ms(n):
       else{
         rtx =rtx + rtx + 1;
         //# print("-> BLE: RTX %d\n" %rtx);
+        console.log(`-> BLE: RTX:${rtx}`)
         if(rtx >= 3){
           //print("-> BLE: retransmission timeout\n");
+          console.log("-> BLE: retransmission timeout\n")
           return;
         }
       }
@@ -343,7 +307,7 @@ def delay_ms(n):
       bdata[n+1] = res[0];
       n =n+ 2;
     }
-    console.log(bdata);
+    console.log("done");
     /*
     s1f_name = "audio.bin";
     s1f_fid = open(s1f_name, 'wb');
@@ -357,7 +321,7 @@ def delay_ms(n):
     file.close();
     */
   }
-  function getInt64Bytes(x: number) {
+  function getInt64Bytes(x) {
     let y= Math.floor(x/2**32);
     return [y,(y<<8),(y<<16),(y<<24), x,(x<<8),(x<<16),(x<<24)].map(z=> z>>>24)
   }
@@ -416,7 +380,7 @@ def delay_ms(n):
       }
     }
   }
-  async function connectDevice(device: Device) {
+  async function connectDevice(device) {
     console.log('connecting to Device:', device.name);
 
     device
@@ -430,29 +394,16 @@ def delay_ms(n):
       })
       
     }
-  async function start(){
+   function start(){
     
     let samples2capture = 1600*4;
-    console.log(connectedDevice.id);
-    connectedDevice.requestMTU(251);
-    //console.log(connectedDevice.readCharacteristicForService(ServiceUUID, CharacteristicUUID));
-    await setCaptureActionAUDIO(1, samples2capture);
-    sleepMs(2000+samples2capture);
-    //await readDataAUDIO();
-    //await printAllServices(connectedDevice);
-
+    connectedDevice.requestMTU(247);
+    setCaptureActionAUDIO(1, samples2capture);
+    sleepMs(2000 + samples2capture/16);
+    console.log("bedarija");
+    readDataAUDIO();
   }
-  async function printAllServices(device: { services: () => any; }) {
-    const services = await device.services();
-    for (let i = 0; i < services.length; i++) {
-      const service = services[i];
-      const characteristics = await service.characteristics();
-      for (let j = 0; j < characteristics.length; j++) {
-        const char = characteristics[j];
-        console.log(`Characteristic UUID: ${char.uuid}, Service UUID: ${char.serviceUUID}`);
-      }
-    }
-  }
+  
   return (
     <View>
       <View style={{paddingBottom: 200}}></View>
@@ -547,4 +498,3 @@ def delay_ms(n):
     </View>
   );
 }
-
